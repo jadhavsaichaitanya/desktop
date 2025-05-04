@@ -1,0 +1,150 @@
+import yfinance as yf
+import pandas as pd
+from datetime import datetime
+import json
+import os
+
+class StockPortfolio:
+    def __init__(self, portfolio_file="portfolio.json"):
+        self.portfolio_file = portfolio_file
+        self.portfolio = self.load_portfolio()
+
+    def load_portfolio(self):
+        """Load portfolio from JSON file or return empty portfolio if file doesn't exist."""
+        if os.path.exists(self.portfolio_file):
+            with open(self.portfolio_file, 'r') as file:
+                return json.load(file)
+        return {}
+
+    def save_portfolio(self):
+        """Save portfolio to JSON file."""
+        with open(self.portfolio_file, 'w') as file:
+            json.dump(self.portfolio, file, indent=4)
+
+    def add_stock(self, ticker, shares, purchase_price, purchase_date):
+        """Add or update a stock in the portfolio."""
+        ticker = ticker.upper()
+        self.portfolio[ticker] = {
+            'shares': shares,
+            'purchase_price': purchase_price,
+            'purchase_date': purchase_date
+        }
+        self.save_portfolio()
+        print(f"Added/Updated {ticker} to portfolio.")
+
+    def remove_stock(self, ticker):
+        """Remove a stock from the portfolio."""
+        ticker = ticker.upper()
+        if ticker in self.portfolio:
+            del self.portfolio[ticker]
+            self.save_portfolio()
+            print(f"Removed {ticker} from portfolio.")
+        else:
+            print(f"{ticker} not found in portfolio.")
+
+    def get_stock_data(self, ticker):
+        """Fetch real-time stock data using yfinance."""
+        try:
+            stock = yf.Ticker(ticker)
+            data = stock.history(period="1d")
+            if data.empty:
+                return None
+            return data['Close'].iloc[-1]
+        except Exception as e:
+            print(f"Error fetching data for {ticker}: {e}")
+            return None
+
+    def view_portfolio(self):
+        """Display portfolio with performance metrics."""
+        if not self.portfolio:
+            print("Portfolio is empty.")
+            return
+
+        data = []
+        total_value = 0
+        total_invested = 0
+
+        for ticker, details in self.portfolio.items():
+            current_price = self.get_stock_data(ticker)
+            if current_price is None:
+                continue
+
+            shares = details['shares']
+            purchase_price = details['purchase_price']
+            invested = shares * purchase_price
+            current_value = shares * current_price
+            gain_loss = current_value - invested
+            gain_loss_pct = (gain_loss / invested) * 100 if invested != 0 else 0
+
+            total_value += current_value
+            total_invested += invested
+
+            data.append([
+                ticker,
+                shares,
+                f"${purchase_price:.2f}",
+                f"${current_price:.2f}",
+                f"${current_value:.2f}",
+                f"${gain_loss:.2f}",
+                f"{gain_loss_pct:.2f}%"
+            ])
+
+        if data:
+            df = pd.DataFrame(data, columns=[
+                'Ticker', 'Shares', 'Purchase Price', 'Current Price',
+                'Current Value', 'Gain/Loss', 'Gain/Loss %'
+            ])
+            print("\nPortfolio Overview:")
+            print(df.to_string(index=False))
+            print(f"\nTotal Invested: ${total_invested:.2f}")
+            print(f"Total Value: ${total_value:.2f}")
+            print(f"Total Gain/Loss: ${total_value - total_invested:.2f}")
+            print(f"Total Gain/Loss %: {((total_value - total_invested) / total_invested * 100):.2f}%")
+        else:
+            print("No valid stock data available.")
+
+def main():
+    portfolio = StockPortfolio()
+    while True:
+        print("\nStock Portfolio Tracker")
+        print("1. Add Stock")
+        print("2. Remove Stock")
+        print("3. View Portfolio")
+        print("4. Exit")
+        try:
+            choice = input("Enter choice (1-4): ").strip()
+        except EOFError:
+            print("Input interrupted. Exiting...")
+            break
+
+        if choice == '1':
+            ticker = input("Enter stock ticker (e.g., AAPL): ").strip()
+            try:
+                shares = float(input("Enter number of shares: ").strip())
+                purchase_price = float(input("Enter purchase price per share: ").strip())
+                purchase_date = input("Enter purchase date (YYYY-MM-DD, or press Enter for today): ").strip()
+                if not purchase_date:
+                    purchase_date = datetime.today().strftime('%Y-%m-DD')
+                portfolio.add_stock(ticker, shares, purchase_price, purchase_date)
+            except (ValueError, EOFError):
+                print("Invalid input or input interrupted. Please try again.")
+
+        elif choice == '2':
+            try:
+                ticker = input("Enter stock ticker to remove: ").strip()
+                portfolio.remove_stock(ticker)
+            except EOFError:
+                print("Input interrupted. Please try again.")
+
+        elif choice == '3':
+            portfolio.view_portfolio()
+
+        elif choice == '4':
+            print("Exiting...")
+            break
+
+        else:
+            print("Invalid choice. Please try again.")
+
+if __name__ == "__main__":
+    main()
